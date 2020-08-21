@@ -1,7 +1,6 @@
 # hagian
 
-Hagian is a bookmark manager... that does a few more things. 
-
+Hagian is a bookmark manager... that goes the extra mile.
 Unlike the classical bookmark manager (the browser-bound toolbar), Hagian you to store and easily access your favorite bookmarks in a more intuative way.
 For one, Hagia is accessed through the browser and allows its users to easily view their favorite interactive sites from a single page.
 
