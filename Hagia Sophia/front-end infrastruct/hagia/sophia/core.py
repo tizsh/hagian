@@ -1,4 +1,4 @@
-#All of the core functionality of Sophiax. 
+#Original core
 
 import requests
 from bs4 import BeautifulSoup
@@ -9,11 +9,18 @@ from .models import Bookmark, Folder
 
 
 
+#these are constants 
 
 basic_url_pattern = "([a-zA-Z0-9]*[\.*])*[a-zA-Z0-9]+[\.][a-zA-Z]+([a-zA-Z0-9\.\&\/\?\:@\-_=#])*"
 proper_url_pattern = "((http|https)\:\/\/)+[a-zA-Z0-9\.\/\?\:@\-_=#]+\.([a-zA-Z]){2,6}([a-zA-Z0-9\.\&\/\?\:@\-_=#])*"
 
+DESCRIPTION_MAX = 100
+TITLE_MAX = 20
+DEFAULT_FOLDER = "///none///"
 
+# ignore_invalid_urls = True
+
+#these are constants
 
 
 def match_url(pattern, string):
@@ -23,6 +30,7 @@ def match_url(pattern, string):
 	    return True
 	else:
 	    return False
+
 
 def get_description(soup):
 	results = soup.find_all("meta", content = True)
@@ -38,6 +46,7 @@ def get_description(soup):
 
 	return ""
 
+
 def folder_exist(name1):
 	try:
 		name1 =	name1.replace("%20", " ")
@@ -51,87 +60,164 @@ def folder_exist(name1):
 		return None
 	return False
 
-def add_bookmark(link,folder_name = None, ignore_invalid_urls = False):
-	link.replace(" ", "%20")
-	link.replace("'", "")
 
-	if(len(link) > 0 ):
-		if (match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == True and ignore_invalid_urls == False):
-			link = "http://"+link
-		if(match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == False and ignore_invalid_urls == False):
-			return False
+def add_bookmark_to_db(url, title = None, description = None, folder_name = DEFAULT_FOLDER):
+	if(title == None):
+		title = url
 
-		try:
-			print("the upmost try is executing")
-			page = requests.get(link)
-			print("first milestone")
+	if(description == None):
+		description = ""
 
-			soup = BeautifulSoup(page.text, 'html.parser')
-			title = soup.title.text
-			description = get_description(soup)
+	if(len(description) > DESCRIPTION_MAX - 3):
+		description = description[:DESCRIPTION_MAX - 3] + "..."
 
-			if(title == None or title =="" or title == []):
-				title = link.replace("'", "")
-				title = link.replace('"', "")
+	if(len(title) > TITLE_MAX):
+		title = title[:TITLE_MAX - 3] + "..."
 
-			if(len(title) > 254):
-				title = title[:254] + "..."
+	if(description == None):
+		description = ""
+	
+	if(len(description) > DESCRIPTION_MAX):
+		description = description[:DESCRIPTION_MAX - 3] + "..."
 
-			if(len(description) > 254):
-				description = description[:248] + "..."
+	fol = Folder.objects.get(name = folder_name)
+	bm = Bookmark(url = url, title = title, description = description, folder_name = fol)
+	bm.save()
 
-			if(folder_exist(folder_name) == True and folder_name != None):
-				fol = Folder.objects.get(name = folder_name)
-				bm = Bookmark(url = link, title = title, description = description, folder_name = fol)
-				bm.save()
-			if(folder_exist(folder_name) == False and folder_name != None):
-				fol = Folder(name = folder_name)
-				fol.save()
-				bm = Bookmark(url = link, title = title, description = description, folder_name = fol)
-				bm.save()
-			else:
-				fol = Folder.objects.get(name = "///none///")	
-				bm = Bookmark(url = link, title = title, description = description, folder_name = fol)
-				bm.save()
 
-			return True
+def add_folder_to_db(folder_name):
+	fol = Folder(name = folder_name)
+	fol.save()
 
-		except Exception as e:
-			raise e
+
+def normalize(l):
+	try:
+		#remove white spaces in link
+		l = l.replace(" ", "%20")
+
+		#replace ' from link
+		l = l.replace("'", "")
+		l = l.replace('"', "")
+
+	except Exception as e:
+		print("Normalization failed. Returning original subroutine")
+
+	return l
+
+
+def add_online(link, folder_name = None):
+
+	if (match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == True):
+		link = "http://"+link
+
+	if(match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == False and ignore_invalid_urls == False):
+		return False
+
+	if(len(link) < 2):
+		return False
+
+	page = requests.get(link)
+	soup = BeautifulSoup(page.text, 'html.parser')
+	title = soup.title.text
+	description = get_description(soup)
+	
+	if(folder_exist(folder_name) == True and folder_name != None):
+		add_bookmark_to_db(url = link, title = title, description = description, folder_name = folder_name)
+		return True
+
+	if(folder_exist(folder_name) == False and folder_name != None):
+		add_folder_to_db(folder_name)
+		add_bookmark_to_db(url = link, title = title, description = description, folder_name = folder_name)
+		return True
+
+	else:
+		add_bookmark_to_db(url = link, title = title, description = description, folder_name = DEFAULT_FOLDER)
+		return True
+
+	return False
+
+
+def offline_add(link, folder_name = None):
+
+	if (match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == True):
+		link = "http://"+link
+
+	if(match_url(proper_url_pattern, link) == False and match_url(basic_url_pattern,link) == False and ignore_invalid_urls == False):
+		return False
+
+	if(len(link) < 2):
+		return False
 
 	try:
-		if(folder_exist(folder_name) == False and folder_name != None):
-			fol = Folder(name = folder_name)
-			fol.save()
-			bm = Bookmark(url = link, title = link, folder_name = fol)
-			bm.save()
 		if(folder_exist(folder_name) == True and folder_name != None):
-			fol = Folder.objects.get(name = folder_name)
-			bm = Bookmark(url = link, title = link, folder_name = fol)
-			bm.save()
+			add_bookmark_to_db(url = link, folder_name = folder_name)
+			return True
+
+		if(folder_exist(folder_name) == False and folder_name != None):
+			add_folder_to_db(folder_name)
+			add_bookmark_to_db(url = link, folder_name = folder_name)
+			return True
+
 		else:
-			fol = Folder.objects.get(name = "///none///")	
-			bm = Bookmark(url = link, title = link, folder_name = fol)
-			bm.save()
-		return True
+			add_bookmark_to_db(url = link)
+			return True
+
+	except Exception as e:
+		print("Offline_add did not work")
+
+	return False
+
+
+
+def add_bookmark(link,folder_name = None):
+	link = normalize(link)
+	try:
+		return add_online(link, folder_name)
+
+	except Exception as e:
+		print("add_online failed... trying offline method")
+
+	try:
+		delete_bookmark("http://hello.com/fuckniggers101")
+		return offline_add(link, folder_name)
 	
 	except Exception as e:
-		print(e)
+		print("offline_add failed... returning false")
 
 	return False
 
 
+### Remember that bookmark's url are not unique! To precisely delete the correct
 
-
-def delete_link(link):
+def delete_folder(fol, delete_inner_bookmarks = False):
 	try:
-		db = MySQLdb.connect(host="localhost",    # your host, usually localhost
-		                   user="admin",         # your username
-		                   passwd="admin",  # your password
-		                   db="hagia")        # name of the data base
-		x = db.cursor()
-		x.execute("""DELETE FROM bookmarks WHERE url = '{0}'""".format(link))
-		db.commit()
+
+		if(delete_inner_bookmarks == True):
+			bm = Bookmark.objects.filter(folder_name = Folder.objects.get(name = fol))
+			bm.delete()
+			bm.save()
+
+		else:
+			bm = Bookmark.objects.filter(folder_name = Folder.objects.get(name = fol))
+			bm.update(folder_name = Folder.objects.get(name = fol))
+			bm.save()
+
+		folder = Folder.objects.filter(name = fol)
+		folder.delete()
+		folder.save()
+
+		return True
+	except Exception as e:
+		raise (e)
+
+	return False
+
+
+def delete_bookmark(link):
+	try:
+		bm = Bookmark.objects.filter(url = link)
+		bm.delete()
+		bm.save()
 		return True
 	except Exception as e:
 		print(e)
@@ -139,38 +225,21 @@ def delete_link(link):
 	return False
 
 
-def create_folder(folder_name):
-	try:
-		db = MySQLdb.connect(host="localhost",    # your host, usually localhost
-				                   user="admin",         # your username
-				                   passwd="admin",  # your password
-				                   db="hagia")        # name of the data base
-		x = db.cursor()		
-		if(folder_exist(db,folder_name) == False):
-			x.execute("""INSERT INTO folders(name) VALUES ('{0}')""".format(folder_name))
-			db.commit()
-			return True
-	except Exception as e:
-		print(e)
-
-	return False		
 
 
-def delete_folder(folder_name):
-	try:
-		db = MySQLdb.connect(host="localhost",    # your host, usually localhost
-		                   user="admin",         # your username
-		                   passwd="admin",  # your password
-		                   db="hagia")        # name of the data base
-		x = db.cursor()
-		if(folder_exist(db,folder_name) == True):
-			x.execute("""INSERT INTO folders(name) VALUES ('{0}')""".format(folder_name))
-			db.commit()
 
-			return True
-	except Exception as e:
-		print(e)
 
-	return False
+
+
+
+
+
+
+
+
+
+
+
+
 
 
